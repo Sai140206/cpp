@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>BFS Simulation</title>
+  <style>
+    :root {
+      --bg: #f7f9fc;
+      --panel: #ffffff;
+      --accent: #0b76ff;
+      --visited: #ff9f1c;
+      --processed: #2ecc71;
+      --edge: #666;
+      --text: #222;
+    }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      width: 1100px;
+      max-width: calc(100vw - 20px);
+      height: 700px;
+      background: var(--panel);
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(10,20,40,0.08);
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      overflow: hidden;
+    }
+
+    /* left: graph */
+    #graphArea {
+      padding: 18px;
+      position: relative;
+      background: linear-gradient(180deg,#fff 0%,#fafcff 100%);
+    }
+    svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* right: controls */
+    .side {
+      padding: 18px;
+      border-left: 1px solid rgba(10,20,40,0.04);
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: linear-gradient(180deg,#fbfcff,#ffffff);
+    }
+    h2 { margin: 4px 0 6px; font-size: 18px; }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; }
+    button {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      background: var(--accent);
+      color: white;
+      transition: transform .08s;
+    }
+    button.secondary {
+      background: #6c757d;
+    }
+    button:active { transform: translateY(1px) }
+    label { font-size: 13px; color: #444; }
+    .info {
+      font-size: 13px;
+      padding: 8px;
+      border-radius: 8px;
+      background: rgba(10,20,40,0.03);
+    }
+    .list-box {
+      background: rgba(10,20,40,0.02);
+      border-radius: 8px;
+      padding: 8px;
+      min-height: 60px;
+    }
+    .queue-item {
+      display:inline-block;
+      margin:4px 6px 4px 0;
+      padding:6px 8px;
+      border-radius:6px;
+      background: #eef6ff;
+      font-weight:700;
+      color: #043a7c;
+    }
+    .legend { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .legend .box { width:14px; height:14px; border-radius:4px; display:inline-block; margin-right:6px; }
+    .footer { margin-top:auto; font-size:12px; color:#666; }
+    input[type=range] { width:100%; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="graphArea">
+      <svg id="svgGraph" viewBox="0 0 900 700" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+
+    <div class="side">
+      <h2>Breadth-First Search (BFS)</h2>
+      <div class="controls">
+        <button id="startBtn">Start BFS</button>
+        <button id="stepBtn" class="secondary">Step</button>
+        <button id="resetBtn" class="secondary">Reset</button>
+      </div>
+
+      <div>
+        <label for="speed">Animation speed (ms)</label>
+        <input id="speed" type="range" min="100" max="1200" value="450">
+      </div>
+
+      <div class="info">
+        <strong>Graph:</strong> Undirected, weighted (weights shown) &nbsp;•&nbsp; Default start node: <strong>A</strong><br>
+        Click any node in the graph to choose a different start node before starting.
+      </div>
+
+      <div>
+        <label>Queue</label>
+        <div id="queueBox" class="list-box"></div>
+      </div>
+
+      <div>
+        <label>Visit order</label>
+        <div id="orderBox" class="list-box"></div>
+      </div>
+
+      <div>
+        <label>Legend</label>
+        <div class="legend">
+          <span><span class="box" style="background:var(--visited)"></span> Visiting (in queue)</span>
+          <span><span class="box" style="background:var(--processed)"></span> Processed (done)</span>
+          <span><span class="box" style="background:#fff; border:2px solid var(--accent)"></span> Start</span>
+        </div>
+      </div>
+
+      <div class="footer">
+        Simple BFS visualization — nodes change color when enqueued and when processed.
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // --- graph definition (predefined positions for display) ---
+  const nodes = [
+    { id: "A", x: 160, y: 120 },
+    { id: "B", x: 360, y: 70  },
+    { id: "C", x: 560, y: 120 },
+    { id: "D", x: 140, y: 320 },
+    { id: "E", x: 360, y: 300 },
+    { id: "F", x: 580, y: 320 },
+    { id: "G", x: 360, y: 500 }
+  ];
+
+  // adjacency list (undirected). format: node -> [ {to:'B', w:1}, ... ]
+  const adj = {
+    A: [{to:'B'},{to:'D'},{to:'E'}],
+    B: [{to:'A'},{to:'C'},{to:'E'}],
+    C: [{to:'B'},{to:'F'}],
+    D: [{to:'A'},{to:'E'},{to:'G'}],
+    E: [{to:'A'},{to:'B'},{to:'D'},{to:'F'},{to:'G'}],
+    F: [{to:'C'},{to:'E'},{to:'G'}],
+    G: [{to:'D'},{to:'E'},{to:'F'}]
+  };
+
+  // --- UI elements ---
+  const svg = document.getElementById('svgGraph');
+  const startBtn = document.getElementById('startBtn');
+  const stepBtn = document.getElementById('stepBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const queueBox = document.getElementById('queueBox');
+  const orderBox = document.getElementById('orderBox');
+  const speedInput = document.getElementById('speed');
+
+  let startNode = 'A';
+  let nodeElems = {}; // by id: {group, circle, label}
+  let edgeElems = []; // list of edge objects
+  let visited = {};
+  let order = [];
+  let bfsQueue = [];
+  let running = false;
+  let stepMode = false;
+  let stepResolve = null;
+
+  // --- draw graph ---
+  function drawGraph() {
+    svg.innerHTML = ''; nodeElems = {}; edgeElems = [];
+    // Draw edges (lines)
+    const drawn = new Set();
+    for (const n of nodes) {
+      const from = n.id;
+      for (const e of adj[from]) {
+        const to = e.to;
+        const key = [from,to].sort().join('-');
+        if (drawn.has(key)) continue;
+        drawn.add(key);
+        const a = nodes.find(x => x.id === from);
+        const b = nodes.find(x => x.id === to);
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', a.x);
+        line.setAttribute('y1', a.y);
+        line.setAttribute('x2', b.x);
+        line.setAttribute('y2', b.y);
+        line.setAttribute('stroke', '#888');
+        line.setAttribute('stroke-width', 2);
+        svg.appendChild(line);
+
+        // optional weight label (not used for BFS but nice)
+        const tx = (a.x + b.x)/2, ty = (a.y + b.y)/2;
+        const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x', tx+6);
+        t.setAttribute('y', ty-6);
+        t.setAttribute('font-size', 12);
+        t.setAttribute('fill', '#444');
+        t.textContent = ''; // empty - keeping graph uncluttered; put numbers if desired
+        svg.appendChild(t);
+
+        edgeElems.push({line, a: from, b: to});
+      }
+    }
+
+    // Draw nodes (group: circle + label)
+    for (const n of nodes) {
+      const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+      g.setAttribute('cursor', 'pointer');
+      const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      circle.setAttribute('cx', n.x);
+      circle.setAttribute('cy', n.y);
+      circle.setAttribute('r', 28);
+      circle.setAttribute('fill', '#fff');
+      circle.setAttribute('stroke', '#0b76ff');
+      circle.setAttribute('stroke-width', 2);
+      circle.setAttribute('id', 'node-'+n.id);
+
+      const label = document.createElementNS('http://www.w3.org/2000/svg','text');
+      label.setAttribute('x', n.x);
+      label.setAttribute('y', n.y + 6);
+      label.setAttribute('font-size', 16);
+      label.setAttribute('font-weight', 700);
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('pointer-events','none');
+      label.textContent = n.id;
+
+      g.appendChild(circle);
+      g.appendChild(label);
+      svg.appendChild(g);
+
+      // click to choose start node
+      g.addEventListener('click', () => {
+        if (running) return;
+        startNode = n.id;
+        highlightStart();
+      });
+
+      nodeElems[n.id] = { group: g, circle, label };
+    }
+
+    highlightStart();
+  }
+
+  function highlightStart() {
+    // update visuals for start node
+    Object.values(nodeElems).forEach(n => {
+      n.circle.setAttribute('stroke-width', 2);
+    });
+    const s = nodeElems[startNode];
+    if (s) {
+      s.circle.setAttribute('stroke-width', 4);
+      // small blink
+      s.circle.animate([{transform:'scale(1)'},{transform:'scale(1.06)'},{transform:'scale(1)'}], {duration: 500});
+    }
+  }
+
+  // --- helpers ---
+  function sleep(ms) {
+    return new Promise(resolve => {
+      if (stepMode) {
+        // wait until user clicks Step or Start
+        stepResolve = resolve;
+        // if step clicked, resolution happens elsewhere
+      } else {
+        setTimeout(resolve, ms);
+      }
+    });
+  }
+
+  function enqueue(node) {
+    bfsQueue.push(node);
+    updateQueueUI();
+    setNodeState(node, 'visiting');
+  }
+  function dequeue() {
+    const n = bfsQueue.shift();
+    updateQueueUI();
+    return n;
+  }
+
+  function updateQueueUI() {
+    queueBox.innerHTML = '';
+    for (const q of bfsQueue) {
+      const s = document.createElement('span');
+      s.className = 'queue-item';
+      s.textContent = q;
+      queueBox.appendChild(s);
+    }
+  }
+
+  function updateOrderUI() {
+    orderBox.innerHTML = '';
+    for (const o of order) {
+      const s = document.createElement('span');
+      s.className = 'queue-item';
+      s.textContent = o;
+      orderBox.appendChild(s);
+    }
+  }
+
+  function setNodeState(id, state) {
+    const el = nodeElems[id]?.circle;
+    if (!el) return;
+    if (state === 'visiting') {
+      el.setAttribute('fill', getComputedStyle(document.documentElement).getPropertyValue('--visited').trim() || '#ff9f1c');
+      el.setAttribute('stroke', '#b35400');
+    } else if (state === 'processed') {
+      el.setAttribute('fill', getComputedStyle(document.documentElement).getPropertyValue('--processed').trim() || '#2ecc71');
+      el.setAttribute('stroke', '#1f7a3a');
+    } else { // default
+      el.setAttribute('fill', '#fff');
+      el.setAttribute('stroke', '#0b76ff');
+    }
+  }
+
+  function resetState() {
+    visited = {};
+    order = [];
+    bfsQueue = [];
+    updateQueueUI(); updateOrderUI();
+    for (const id in nodeElems) setNodeState(id, 'default');
+    highlightStart();
+  }
+
+  // --- BFS animation algorithm ---
+  async function runBFS() {
+    running = true;
+    stepMode = false;
+    startBtn.textContent = 'Running...';
+    startBtn.disabled = true;
+    stepBtn.disabled = true;
+
+    resetState();
+    const delay = () => parseInt(speedInput.value || 450, 10);
+
+    // Start BFS
+    enqueue(startNode);
+    visited[startNode] = true;
+
+    await sleep(delay());
+
+    while (bfsQueue.length > 0) {
+      const cur = dequeue();
+      // mark processing
+      setNodeState(cur, 'processed');
+      order.push(cur);
+      updateOrderUI();
+      await sleep(delay());
+
+      // explore neighbors
+      for (const nb of adj[cur]) {
+        const to = nb.to;
+        if (!visited[to]) {
+          visited[to] = true;
+          enqueue(to);
+          await sleep(delay());
+        }
+      }
+    }
+
+    startBtn.textContent = 'Start BFS';
+    startBtn.disabled = false;
+    stepBtn.disabled = false;
+    running = false;
+  }
+
+  // --- Step-by-step BFS ---
+  async function startStepBFS() {
+    resetState();
+    running = true;
+    stepMode = true;
+    startBtn.disabled = true;
+    stepBtn.disabled = false;
+    enqueue(startNode);
+    visited[startNode] = true;
+    // First await waiting for step
+    await waitForStep();
+    // We'll process in a loop but wait at each small action
+    while (bfsQueue.length > 0) {
+      const cur = dequeue();
+      setNodeState(cur, 'processed');
+      order.push(cur);
+      updateOrderUI();
+      await waitForStep();
+
+      for (const nb of adj[cur]) {
+        const to = nb.to;
+        if (!visited[to]) {
+          visited[to] = true;
+          enqueue(to);
+          await waitForStep();
+        }
+      }
+    }
+    running = false;
+    startBtn.disabled = false;
+    stepBtn.disabled = false;
+    stepMode = false;
+  }
+
+  function waitForStep(){
+    return new Promise(resolve => {
+      stepResolve = resolve;
+    });
+  }
+
+  // --- button handlers ---
+  startBtn.addEventListener('click', async () => {
+    if (running) return;
+    stepMode = false;
+    await runBFS();
+  });
+
+  stepBtn.addEventListener('click', async () => {
+    if (!running) {
+      // begin step-mode BFS
+      startStepBFS();
+    } else if (stepResolve) {
+      // advance one step
+      stepResolve();
+      stepResolve = null;
+    }
+  });
+
+  resetBtn.addEventListener('click', () => {
+    if (running) return alert('Stop the run before resetting (wait for completion).');
+    resetState();
+  });
+
+  // when speed changed and running in non-step mode, that's fine; new sleeps will use speed value
+
+  // keyboard: press space to step when in step mode
+  window.addEventListener('keydown', (e)=>{
+    if (e.code === 'Space' && stepResolve) {
+      e.preventDefault();
+      stepResolve();
+      stepResolve = null;
+    }
+  });
+
+  // initial draw
+  drawGraph();
+  resetState();
+
+  // optional: expose some functions for console tinkering
+  window._bfs = { runBFS, startStepBFS, resetState, nodes, adj };
+  </script>
+</body>
+</html>
